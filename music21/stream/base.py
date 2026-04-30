@@ -13019,6 +13019,13 @@ class Measure(Stream):
             measure should have a `paddingRight` of 1.0.
             (The name comes from the CSS graphical term
             for the amount of padding on the right side of a region.)''',
+        'implicit': '''
+            True if the source MusicXML measure had `implicit="yes"`. Implicit
+            measures are those whose printed display semantics differ from their
+            content semantics — pickup measures (paddingLeft handles display),
+            second-ending voltas, and cadenza bars whose content quarter-length
+            exceeds the time signature's bar duration. Used by meter logic to
+            skip bar-duration modulo for measures whose content overflows.''',
     }
 
     def __init__(self, *args, number: int|str = 0, **keywords):
@@ -13053,6 +13060,10 @@ class Measure(Stream):
         else:
             self.number = number
         self.showNumber = ShowNumber.DEFAULT
+        # True iff source MusicXML had implicit="yes" on this measure.
+        # Set by xmlToM21.parseMeasureAttributes; consumed by meter logic
+        # to skip bar-duration modulo on cadenza/overflow bars.
+        self.implicit: bool = False
         # we can request layout width, using the same units used
         # in layout.py for systems; most musicxml readers do not support this
         # on input
@@ -13145,7 +13156,8 @@ class Measure(Stream):
         super().mergeAttributes(other)
 
         for attr in ('timeSignatureIsNew', 'clefIsNew', 'keyIsNew', 'filled',
-                     'paddingLeft', 'paddingRight', 'number', 'numberSuffix', 'layoutWidth'):
+                     'paddingLeft', 'paddingRight', 'number', 'numberSuffix', 'layoutWidth',
+                     'implicit'):
             if hasattr(other, attr):
                 setattr(self, attr, getattr(other, attr))
 

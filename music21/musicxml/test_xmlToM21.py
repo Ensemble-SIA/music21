@@ -894,6 +894,39 @@ class Test(unittest.TestCase):
         self.assertIs(trillExtension[0], fSharpTrill)
         self.assertIs(trillExtension[-1], fSharpTrill)
 
+    def testImplicitCadenzaOverflow(self):
+        '''
+        Implicit measure (implicit="yes") whose actual content quarter-
+        length exceeds the time signature's bar duration. This is the
+        encoding pattern used by modern engravers for cadenza washes.
+
+        Without the implicit-overflow handling, music21's beat property
+        applies modulo arithmetic via getMeasureOffsetOrMeterModulusOffset
+        and collapses overflowing notes onto early beats of the bar.
+        '''
+        from music21 import converter
+        thisDir = common.getSourceFilePath() / 'musicxml'
+        testFp = thisDir / 'testImplicitCadenzaOverflow.xml'
+        c = converter.parse(testFp, forceSource=True)
+
+        measures = list(c.recurse().getElementsByClass(stream.Measure))
+        m1, m2 = measures[0], measures[1]
+
+        # First measure is normal: implicit flag preserved as False.
+        self.assertFalse(m1.implicit)
+        m1_beats = [float(n.beat) for n in m1.flatten().notes]
+        self.assertEqual(m1_beats, [1.0, 2.0, 3.0, 4.0])
+
+        # Second measure is implicit and contains 6 quarters of content
+        # in a 4/4 bar (overflow). The implicit attribute must be preserved
+        # by the importer so getMeasureOffsetOrMeterModulusOffset can skip
+        # the modulo and the .beat property can extrapolate the meter's
+        # pulse past the bar boundary.
+        self.assertTrue(m2.implicit)
+        m2_beats = [float(n.beat) for n in m2.flatten().notes]
+        # Without the fix these would wrap to [1.0, 2.0, 3.0, 4.0, 1.0, 2.0]
+        self.assertEqual(m2_beats, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+
     def testLucaGloriaSpanners(self):
         '''
         lots of lines, including overlapping here; testing that

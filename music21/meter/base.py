@@ -1767,7 +1767,22 @@ class TimeSignature(TimeSignatureBase):
         '''
         mOffset = el._getMeasureOffset()  # TODO(msc): expose this method and remove private
         tsMeasureOffset = self._getMeasureOffset(includeMeasurePadding=False)
-        if (mOffset + tsMeasureOffset) < self.barDuration.quarterLength:
+        # Skip the bar-duration modulo for implicit measures whose actual
+        # content quarter-length exceeds the time signature's bar duration
+        # (cadenza bars, second-ending voltas with unusual length, etc.).
+        # Without this branch, dense cadenza tuplet content past barDuration
+        # wraps to small offsets and collapses positions onto the start of
+        # the bar — so multiple distinct notes report the same beat.
+        # The implicit flag is set by xmlToM21.parseMeasureAttributes when
+        # the source MusicXML measure has implicit="yes".
+        # See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md.
+        activeSite = el.activeSite
+        is_implicit_measure = (
+            activeSite is not None
+            and getattr(activeSite, 'isMeasure', False)
+            and getattr(activeSite, 'implicit', False)
+        )
+        if is_implicit_measure or (mOffset + tsMeasureOffset) < self.barDuration.quarterLength:
             return mOffset
         else:
             # must get offset relative to not just start of Stream, but the last

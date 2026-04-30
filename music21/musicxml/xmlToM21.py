@@ -1895,6 +1895,12 @@ class PartParser(XMLParserBase):
                 for sourceVoice, copyVoice in zip(sourceMeasure.voices, copyMeasure.voices):
                     copy_into_partStaff(sourceVoice, copyVoice, elementsIdsNotToGoInThisStaff)
                 copyMeasure.flattenUnnecessaryVoices(force=False, inPlace=True)
+                # Propagate per-measure semantic flags from the source measure
+                # to the per-staff copy. template() copies these via
+                # mergeAttributes, but the ravel cadenza-overflow workload
+                # showed implicit not arriving on PartStaff measures via that
+                # path — explicit propagation here is defensive and cheap.
+                copyMeasure.implicit = sourceMeasure.implicit
 
         score = self.parent.stream
         staffGroup = layout.StaffGroup(partStaves, name=self.stream.partName, symbol='brace')
@@ -5723,7 +5729,14 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
         # may need to do a format/unit conversion?
         '''
         implicit = self.mxMeasure.get('implicit')
-        if xmlObjects.yesNoToBoolean(implicit):
+        implicit_bool = xmlObjects.yesNoToBoolean(implicit)
+        # Preserve implicit semantic on the Measure for downstream use
+        # (e.g., meter logic that should not apply bar-duration modulo
+        # to cadenza measures whose actual content overflows the printed
+        # time signature). Previously implicit was used only for display
+        # (showNumber). See ensemble docs/UPSTREAM_MODIFICATIONS.md.
+        self.stream.implicit = implicit_bool
+        if implicit_bool:
             self.stream.showNumber = stream.enums.ShowNumber.NEVER
         else:
             self.stream.showNumber = stream.enums.ShowNumber.DEFAULT

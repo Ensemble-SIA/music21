@@ -3765,7 +3765,19 @@ class Music21Object(prebase.ProtoM21Object):
         '''
         try:
             ts = self._getTimeSignatureForBeat()
-            return ts.getBeatProportion(ts.getMeasureOffsetOrMeterModulusOffset(self))
+            qLenPos = ts.getMeasureOffsetOrMeterModulusOffset(self)
+            # Implicit-bar overflow: if the offset exceeds the time
+            # signature's bar duration (returned raw, not modulo'd, for
+            # measures marked implicit="yes" whose actual content quarter-
+            # length extends past the printed bar duration — cadenzas), the
+            # beatSequence in getBeatProportion is only sized for [0, barDuration)
+            # and would raise MeterException. Extrapolate by continuing the
+            # meter's primary pulse past the bar end: convert the raw quarter
+            # offset into beat-units (where 1 beat == ts.beatDuration.quarterLength).
+            # See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md.
+            if qLenPos >= ts.barDuration.quarterLength:
+                return opFrac(qLenPos / ts.beatDuration.quarterLength + 1)
+            return ts.getBeatProportion(qLenPos)
         except Music21ObjectException:
             return float('nan')
 
