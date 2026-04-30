@@ -1769,11 +1769,18 @@ class TimeSignature(TimeSignatureBase):
         # The implicit flag is set by xmlToM21.parseMeasureAttributes when
         # the source MusicXML measure has implicit="yes".
         # See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md.
+        # Find the enclosing Measure: activeSite when el is directly in one,
+        # otherwise via context (notes inside a Voice container have
+        # activeSite=Voice, not Measure).
         activeSite = el.activeSite
+        if activeSite is not None and getattr(activeSite, 'isMeasure', False):
+            enclosingMeasure = activeSite
+        else:
+            from music21 import stream as _stream
+            enclosingMeasure = el.getContextByClass(_stream.Measure)
         is_implicit_measure = (
-            activeSite is not None
-            and getattr(activeSite, 'isMeasure', False)
-            and getattr(activeSite, 'implicit', False)
+            enclosingMeasure is not None
+            and getattr(enclosingMeasure, 'implicit', False)
         )
         if is_implicit_measure or opFrac(mOffset + tsMeasureOffset) < self.barDuration.quarterLength:
             return mOffset
