@@ -2893,6 +2893,15 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             if t.TYPE_CHECKING:
                 assert isinstance(n, note.GeneralNote)
 
+            # Ensemble fork: preserve source <note id> as Music21Object.id
+            # so downstream consumers can join m21 rows back to source XML
+            # by note identity. Without this, m21 leaves .id at the default
+            # Python builtins.id(self) (a memory address), and the source
+            # id is silently dropped on import.
+            source_id = mxNote.get('id')
+            if source_id is not None:
+                n.id = source_id
+
             self.updateLyricsFromList(n, mxNote.findall('lyric'))
             self.addToStaffReference(mxNote, n)
             self.insertInMeasureOrVoice(mxNote, n)
@@ -2907,6 +2916,18 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             # add any accumulated lyrics
             self.updateLyricsFromList(c, self.mxLyricList)
             self.addToStaffReference(self.mxNoteList[0], c)
+
+            # Ensemble fork: same id-preservation as the single-note branch.
+            # Chord.id ← first source <note id>; per-pitch ids on c.notes
+            # so cross-parser consumers can address each chord member.
+            chord_id = self.mxNoteList[0].get('id')
+            if chord_id is not None:
+                c.id = chord_id
+            for sub_note, mx in zip(c.notes, self.mxNoteList):
+                sub_id = mx.get('id')
+                if sub_id is not None:
+                    sub_note.id = sub_id
+
             for thisMxNote in self.mxNoteList:
                 # voice might be in a previous note; in fact, often in first <note>
                 if thisMxNote.find('voice') is not None:
