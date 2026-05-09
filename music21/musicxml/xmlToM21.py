@@ -4738,19 +4738,26 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
         carry a tie. Called from xmlToSimpleNote immediately after
         `n.tie = self.xmlToTie(mxNote)`.
 
-        Logic:
-          * `tie.type == 'start'`: register self in ongoing[(staff, voice, midi)]
-            so a future stop / continue can back-point to us.
-          * `tie.type == 'stop'`: look up prior; set back-pointers on both;
-            clear ongoing entry (chain ends here).
-          * `tie.type == 'continue'`: look up prior, set back-pointers; then
-            update ongoing entry to point at THIS note for the next link.
-          * `tie.type == 'let-ring'` or other: no-op (no chain semantic).
+        Two-tier ongoing tracking:
+          * Voice-strict (staff, voice, midi) — precise; handles two
+            independent tie chains for the same pitch on the same staff
+            in different voices (Bach BWV 875 bar 23: voice 1 and voice 2
+            both have G4 chains live simultaneously).
+          * Voice-loose (staff, midi) — fallback for engraver voice
+            crossings (Brahms Op. 118 No. 2 bar 19: E4 starts in voice 1
+            of bar 18, stops in voice 2 of bar 19). Per W3C MusicXML 4.0
+            the tie's <number> attribute "is rarely needed to disambiguate
+            ties, since note pitches will usually suffice."
+          * On stop/continue: try strict first, then loose. On start:
+            register both keys.
 
-        Orphan tie-stop (no matching ongoing) raises ValueError with the
-        future-LINT.TIE.RESOLVABLE message — pulls orphan detection
-        upstream of m21's silent pass-through, matching the partitura
-        fork's pattern.
+        Orphan tie-stop (no matching ongoing in either tier) raises
+        ValueError with the future-LINT.TIE.RESOLVABLE message — pulls
+        orphan detection upstream of m21's silent pass-through, matching
+        the partitura fork's pattern.
+
+        Mirror of `extraction/score_analysis._build_tie_chain_root` —
+        keep the two implementations in sync.
         '''
         if n.tie is None:
             return
@@ -4765,8 +4772,6 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
         note_id = mxNote.get('id')
         if note_id is None:
             return  # no EUUID, can't back-point
-        # Build the (staff, voice, midi) key — same shape the partitura
-        # fork uses (importmusicxml.py:1480-1517).
         staff = self.getStaffNumber(mxNote)
         voice_el = mxNote.find('voice')
         voice = (
@@ -4775,11 +4780,22 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             else None
         )
         midi = n.pitch.midi
-        key = (staff, voice, midi)
-        ongoing = self.parent._ongoing_tie_starts
+        strict_key = (staff, voice, midi)
+        loose_key = (staff, midi)
+        # Two-tier dicts live on parent. Initialize loose on first use so
+        # existing PartParser init (which only allocates the strict dict)
+        # keeps working unchanged.
+        ongoing_strict = self.parent._ongoing_tie_starts
+        if not hasattr(self.parent, '_ongoing_tie_starts_loose'):
+            self.parent._ongoing_tie_starts_loose = {}
+        ongoing_loose = self.parent._ongoing_tie_starts_loose
 
         if tie_type in ('stop', 'continue'):
-            entry = ongoing.get(key)
+            used_loose = False
+            entry = ongoing_strict.get(strict_key)
+            if entry is None:
+                entry = ongoing_loose.get(loose_key)
+                used_loose = entry is not None
             if entry is None:
                 bar_str = self.measureNumber if self.measureNumber is not None else '?'
                 raise ValueError(
@@ -4792,11 +4808,22 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             n.tied_from_note_id = prior_id
             prior_note.tied_to_note_id = note_id
             if tie_type == 'stop':
-                del ongoing[key]
+                # Close in both tiers. Strict-tier slot for a loose
+                # resolution lives under the START's voice (not this
+                # stop's voice) — find it by value.
+                if used_loose:
+                    for k, v in list(ongoing_strict.items()):
+                        if v == entry:
+                            del ongoing_strict[k]
+                else:
+                    ongoing_strict.pop(strict_key, None)
+                ongoing_loose.pop(loose_key, None)
             else:  # continue
-                ongoing[key] = (note_id, n)
+                ongoing_strict[strict_key] = (note_id, n)
+                ongoing_loose[loose_key] = (note_id, n)
         else:  # 'start'
-            ongoing[key] = (note_id, n)
+            ongoing_strict[strict_key] = (note_id, n)
+            ongoing_loose[loose_key] = (note_id, n)
 
     def xmlToTie(self, mxNote):
         # noinspection PyShadowingNames
