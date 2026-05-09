@@ -1034,6 +1034,15 @@ class NotRest(GeneralNote):
     tied_from_note_id: 'str|None' = None
     tied_to_note_id: 'str|None' = None
 
+    # Ensemble fork: class-level default for grace-host EUUID. Set during
+    # MusicXML import in xmlToM21.py via a per-PartParser pending-graces
+    # queue: when a grace is parsed, queue its id; when a non-grace note
+    # arrives, back-fill all queued graces' grace_host_note_id with the
+    # non-grace's id. Lets the in-loop voter find a grace's host by
+    # direct EUUID dereference instead of adjacency walking. Importers
+    # other than MusicXML leave it at None.
+    grace_host_note_id: 'str|None' = None
+
     def __init__(self,
                  *,
                  beams: beam.Beams|None = None,
