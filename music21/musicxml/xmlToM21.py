@@ -4797,13 +4797,24 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
                 entry = ongoing_loose.get(loose_key)
                 used_loose = entry is not None
             if entry is None:
-                bar_str = self.measureNumber if self.measureNumber is not None else '?'
-                raise ValueError(
-                    f"orphan tie-stop at bar {bar_str} voice {voice} "
-                    f"staff {staff} midi {midi} note_id {note_id} — "
-                    f"no matching <tie type='start'/> in scope. "
-                    f"This should be a LINT.TIE.RESOLVABLE finding."
-                )
+                # Anchorless continue (or anchorless stop): treat as an
+                # implicit start. Engraver pattern, common in held-tone
+                # voice ladders (Liszt Ballade 2 LH bars 135-141 / 230
+                # v6+v7 staff 2): every link in the chain is encoded as
+                # <tie type="stop"/><tie type="start"/> with no pure
+                # tied-start anchoring the chain. MuseScore renders these
+                # ties correctly. Pure tied-stops with no prior take
+                # this branch too — the "stop of nothing" is musically
+                # meaningless and the engraver presumably meant the
+                # note as a fresh onset. No back-pointer is set; for
+                # 'continue' the start tier registration below opens a
+                # fresh chain so downstream stops resolve.
+                if tie_type == 'continue':
+                    ongoing_strict[strict_key] = (note_id, n)
+                    ongoing_loose[loose_key] = (note_id, n)
+                # Pure 'stop' with no prior: no-op (no back-pointer, no
+                # tier update — the note stands alone as a fresh onset).
+                return
             prior_id, prior_note = entry
             n.tied_from_note_id = prior_id
             prior_note.tied_to_note_id = note_id
