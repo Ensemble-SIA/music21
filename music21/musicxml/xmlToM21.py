@@ -1511,6 +1511,18 @@ class PartParser(XMLParserBase):
         self.lastMeasureNumber = 0
         self.lastNumberSuffix: str|None = None
 
+        # Ensemble fork: ongoing-tie state machine for tied_from_note_id /
+        # tied_to_note_id back-pointer attachment. Lives on PartParser
+        # because ties span barlines within a part. Keyed by
+        # (staff, voice, midi_pitch) — the same key shape the partitura
+        # fork uses (importmusicxml.py:1480-1517). Maps to (id, Note ref)
+        # of the most recent tied-start; lookup at tied-stop / tied-
+        # continue finds the prior link, sets back-pointer attributes on
+        # both notes, and (for stop) clears the entry. Cleared per-part.
+        self._ongoing_tie_starts: dict[
+            tuple[int|None, int|None, int|None], tuple[str, 'note.Note']
+        ] = {}
+
         self.multiMeasureRestsToCapture = 0
         self.activeMultiMeasureRestSpanner: spanner.MultiMeasureRest|None = None
 
@@ -3583,6 +3595,11 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             n.tie = self.xmlToTie(mxNote)
             # provide all because of tied
             # TODO: find tied if tie is not found (cue notes)
+            # Ensemble fork: tied_from_note_id / tied_to_note_id back-pointer
+            # bookkeeping. Adds EUUID pointers on the resolved Note + the
+            # prior tied Note. Skip on Unpitched (no .pitch.midi).
+            if isinstance(n, note.Note):
+                self._update_tie_pointers(mxNote, n)
 
         # translate if necessary, otherwise leaves unchanged
         if isGrace is True:
@@ -4613,6 +4630,73 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             synchronizeIds(mxObj, su)
 
         return su
+
+    def _update_tie_pointers(self, mxNote, n):
+        '''
+        Ensemble fork: maintain the per-PartParser ongoing-tie state machine
+        and back-fill `tied_from_note_id` / `tied_to_note_id` on Notes that
+        carry a tie. Called from xmlToSimpleNote immediately after
+        `n.tie = self.xmlToTie(mxNote)`.
+
+        Logic:
+          * `tie.type == 'start'`: register self in ongoing[(staff, voice, midi)]
+            so a future stop / continue can back-point to us.
+          * `tie.type == 'stop'`: look up prior; set back-pointers on both;
+            clear ongoing entry (chain ends here).
+          * `tie.type == 'continue'`: look up prior, set back-pointers; then
+            update ongoing entry to point at THIS note for the next link.
+          * `tie.type == 'let-ring'` or other: no-op (no chain semantic).
+
+        Orphan tie-stop (no matching ongoing) raises ValueError with the
+        future-LINT.TIE.RESOLVABLE message — pulls orphan detection
+        upstream of m21's silent pass-through, matching the partitura
+        fork's pattern.
+        '''
+        if n.tie is None:
+            return
+        tie_type = n.tie.type
+        if tie_type not in ('start', 'stop', 'continue'):
+            return  # 'let-ring' etc. — no chain semantic
+        # Read source <note id> directly from mxNote — n.id is not yet
+        # assigned at this point (the source-id copy happens in the
+        # CALLER xmlToNote at line ~2837, AFTER xmlToSimpleNote returns).
+        # Reading from mxNote gives us the canonical mn-{...} id every
+        # time without depending on call ordering.
+        note_id = mxNote.get('id')
+        if note_id is None:
+            return  # no EUUID, can't back-point
+        # Build the (staff, voice, midi) key — same shape the partitura
+        # fork uses (importmusicxml.py:1480-1517).
+        staff = self.getStaffNumber(mxNote)
+        voice_el = mxNote.find('voice')
+        voice = (
+            int(voice_el.text)
+            if voice_el is not None and voice_el.text and voice_el.text.isdigit()
+            else None
+        )
+        midi = n.pitch.midi
+        key = (staff, voice, midi)
+        ongoing = self.parent._ongoing_tie_starts
+
+        if tie_type in ('stop', 'continue'):
+            entry = ongoing.get(key)
+            if entry is None:
+                bar_str = self.measureNumber if self.measureNumber is not None else '?'
+                raise ValueError(
+                    f"orphan tie-stop at bar {bar_str} voice {voice} "
+                    f"staff {staff} midi {midi} note_id {note_id} — "
+                    f"no matching <tie type='start'/> in scope. "
+                    f"This should be a LINT.TIE.RESOLVABLE finding."
+                )
+            prior_id, prior_note = entry
+            n.tied_from_note_id = prior_id
+            prior_note.tied_to_note_id = note_id
+            if tie_type == 'stop':
+                del ongoing[key]
+            else:  # continue
+                ongoing[key] = (note_id, n)
+        else:  # 'start'
+            ongoing[key] = (note_id, n)
 
     def xmlToTie(self, mxNote):
         # noinspection PyShadowingNames

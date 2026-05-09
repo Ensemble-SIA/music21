@@ -1019,6 +1019,21 @@ class NotRest(GeneralNote):
         'notehead', 'noteheadFill', 'noteheadParenthesis', 'beams'
     )
 
+    # Ensemble fork: class-level defaults for tie-chain EUUID back-pointers.
+    # Set during MusicXML import in xmlToM21.py:_update_tie_pointers via a
+    # per-PartParser ongoing-tie state machine. Lets downstream consumers
+    # walk tie chains by direct EUUID dereference instead of m21's native
+    # single-direction Note.tie.type marker (which exposes "this note has
+    # a tie continuation" but not "the prior tied note's id"). Importers
+    # other than MusicXML leave both at None — non-MusicXML sources don't
+    # have the source <note id> surface to back-point to. Class-level
+    # rather than instance-level because m21's parser constructs Note
+    # instances via __new__ without calling __init__; class defaults
+    # ensure the attributes exist on every instance regardless of
+    # construction path.
+    tied_from_note_id: 'str|None' = None
+    tied_to_note_id: 'str|None' = None
+
     def __init__(self,
                  *,
                  beams: beam.Beams|None = None,
