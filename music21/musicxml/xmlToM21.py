@@ -1523,6 +1523,14 @@ class PartParser(XMLParserBase):
             tuple[int|None, int|None, int|None], tuple[str, 'note.Note']
         ] = {}
 
+        # Ensemble fork: pending-graces queue for grace_host_note_id back-
+        # fill. When a grace is parsed, append (id, Note ref) to the queue.
+        # When a non-grace note arrives, back-fill grace_host_note_id on
+        # every queued grace with the non-grace's id, then clear the
+        # queue. Per-part because graces don't typically span barlines but
+        # the queue scope is per-part for safety against unusual encodings.
+        self._pending_grace_notes: list[tuple[str, 'note.Note']] = []
+
         self.multiMeasureRestsToCapture = 0
         self.activeMultiMeasureRestSpanner: spanner.MultiMeasureRest|None = None
 
@@ -3612,6 +3620,22 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             self.xmlNotations(mxN, n)
 
         self.setEditorial(mxNote, n)
+
+        # Ensemble fork: grace_host_note_id back-fill via per-PartParser
+        # pending-graces queue. Reads source <note id> directly from
+        # mxNote (n.id is not assigned until the caller xmlToNote runs
+        # after this returns).
+        source_note_id = mxNote.get('id')
+        if source_note_id is not None and isinstance(n, note.NotRest):
+            queue = self.parent._pending_grace_notes
+            if isGrace:
+                # Queue self for the next non-grace to claim as host.
+                queue.append((source_note_id, n))
+            else:
+                # Non-grace: claim all queued graces as ours.
+                for _gid, grace_note in queue:
+                    grace_note.grace_host_note_id = source_note_id
+                queue.clear()
 
         return n
         # TODO: attr: font
