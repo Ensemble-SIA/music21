@@ -3641,7 +3641,25 @@ class Music21Object(prebase.ProtoM21Object):
                     if includeMeasurePadding and m.paddingLeft:
                         offsetLocal = opFrac(offsetLocal + m.paddingLeft)
                 except SitesException:
-                    offsetLocal = self.offset
+                    # Self is nested inside a Voice (or other Stream)
+                    # within m, so m doesn't have a direct entry for self.
+                    # Walk through the immediate parent to compose the
+                    # offset: parent's offset within m + self's offset
+                    # within parent. Without this, multi-voice pickup
+                    # measures silently lose paddingLeft on every note
+                    # whose Voice container m21 didn't elide — `.beat`
+                    # then reports the fill-from-start position instead
+                    # of the count-back position.
+                    parent = self.activeSite
+                    if parent is not None and parent is not m:
+                        try:
+                            offsetLocal = m.elementOffset(parent) + parent.elementOffset(self)
+                            if includeMeasurePadding:
+                                offsetLocal += m.paddingLeft
+                        except SitesException:
+                            offsetLocal = self.offset
+                    else:
+                        offsetLocal = self.offset
 
             else:  # hope that we get the right one
                 # environLocal.printDebug(
