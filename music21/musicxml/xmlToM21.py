@@ -4797,23 +4797,56 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
                 entry = ongoing_loose.get(loose_key)
                 used_loose = entry is not None
             if entry is None:
-                # Anchorless continue (or anchorless stop): treat as an
-                # implicit start. Engraver pattern, common in held-tone
-                # voice ladders (Liszt Ballade 2 LH bars 135-141 / 230
-                # v6+v7 staff 2): every link in the chain is encoded as
-                # <tie type="stop"/><tie type="start"/> with no pure
-                # tied-start anchoring the chain. MuseScore renders these
-                # ties correctly. Pure tied-stops with no prior take
-                # this branch too — the "stop of nothing" is musically
-                # meaningless and the engraver presumably meant the
-                # note as a fresh onset. No back-pointer is set; for
-                # 'continue' the start tier registration below opens a
-                # fresh chain so downstream stops resolve.
+                # Anchorless tied-stop / continue: classify by W3C MusicXML
+                # 4.0 Issue #142 single-ended-tie use case. Recognized
+                # cases pass through (no back-pointer, no chain registry
+                # update for 'stop'; tier registration for 'continue'
+                # which opens a fresh chain for downstream stops).
+                # Unrecognized patterns RAISE — sound/notation pair
+                # mismatch is the only currently-detected anomaly.
+                # See ensemble's docs/TIE_HANDLING_ARC.md and the mirror
+                # in extraction/score_analysis._build_tie_chain_root.
+                tied_types = {
+                    t.get('type')
+                    for t in mxNote.findall('notations/tied')
+                }
                 if tie_type == 'continue':
+                    # Use case #2: "let-ring" semantic in MusicXML
+                    # encoding (sound has start+stop on same note,
+                    # notation should match). If notation doesn't carry
+                    # the start+stop pair, that's a sound/notation
+                    # mismatch.
+                    if not (
+                        'start' in tied_types and 'stop' in tied_types
+                    ):
+                        bar_str = self.measureNumber if self.measureNumber is not None else '?'
+                        raise ValueError(
+                            f"orphan tie-continue at bar {bar_str} voice "
+                            f"{voice} staff {staff} midi {midi} note_id "
+                            f"{note_id} — <tie> sound says continue but "
+                            f"<tied> notation pair is incomplete; "
+                            f"sound/notation pair mismatch. "
+                            f"This should be a LINT.TIE.SOUND_NOTATION_PAIR finding."
+                        )
                     ongoing_strict[strict_key] = (note_id, n)
                     ongoing_loose[loose_key] = (note_id, n)
-                # Pure 'stop' with no prior: no-op (no back-pointer, no
-                # tier update — the note stands alone as a fresh onset).
+                else:  # tie_type == 'stop'
+                    # Use case #1: "tie ending with no starting note" —
+                    # <tie type="stop"/> + <tied type="stop"/> only.
+                    # Anything else is sound/notation mismatch.
+                    if not ('stop' in tied_types and 'start' not in tied_types):
+                        bar_str = self.measureNumber if self.measureNumber is not None else '?'
+                        raise ValueError(
+                            f"orphan tie-stop at bar {bar_str} voice "
+                            f"{voice} staff {staff} midi {midi} note_id "
+                            f"{note_id} — <tie type='stop'/> without "
+                            f"matching <tied type='stop'/> notation; "
+                            f"sound/notation pair mismatch. "
+                            f"This should be a LINT.TIE.SOUND_NOTATION_PAIR finding."
+                        )
+                    # Pure 'stop' with no prior: no-op (no back-pointer,
+                    # no tier update — the note stands alone as a fresh
+                    # onset).
                 return
             prior_id, prior_note = entry
             n.tied_from_note_id = prior_id
