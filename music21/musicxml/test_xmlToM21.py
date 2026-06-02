@@ -927,6 +927,46 @@ class Test(unittest.TestCase):
         # Without the fix these would wrap to [1.0, 2.0, 3.0, 4.0, 1.0, 2.0]
         self.assertEqual(m2_beats, [1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
 
+    def testInteriorImplicitFillFromStart(self):
+        '''
+        The paddingLeft right-edge count-back (Ensemble's right-aligned pickup
+        convention) applies ONLY to the leading anacrusis. Interior implicit
+        incomplete measures — mid-measure-repeat halves, pair-sum splits — are
+        numbered fill-from-start.
+
+        music21 by default applies paddingLeft to every implicit incomplete
+        measure, so without the isLeadingAnacrusis gate the interior implicit
+        half reports beat 3.0 instead of 1.0. See ensemble repo:
+        docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md "Right-aligned
+        pickup convention".
+        '''
+        from music21 import converter
+        thisDir = common.getSourceFilePath() / 'musicxml'
+        testFp = thisDir / 'testInteriorImplicitFillFromStart.xml'
+        c = converter.parse(testFp, forceSource=True)
+
+        measures = list(c.recurse().getElementsByClass(stream.Measure))
+        m0, m1, m2, m3 = measures[0], measures[1], measures[2], measures[3]
+
+        # Leading anacrusis: implicit pickup at the start of the part. The
+        # count-back is KEPT — a 1-quarter pickup in 3/4 reports beat 3.0.
+        self.assertTrue(m0.implicit)
+        self.assertTrue(m0.isLeadingAnacrusis)
+        self.assertEqual([float(n.beat) for n in m0.flatten().notes], [3.0])
+
+        # Full bar.
+        self.assertEqual([float(n.beat) for n in m1.flatten().notes], [1.0, 2.0, 3.0])
+
+        # Interior split, first half (2 quarters): fill-from-start.
+        self.assertFalse(m2.implicit)
+        self.assertEqual([float(n.beat) for n in m2.flatten().notes], [1.0, 2.0])
+
+        # Interior split, implicit second half (1 quarter): implicit but NOT
+        # the leading anacrusis, so fill-from-start -> beat 1.0, not 3.0.
+        self.assertTrue(m3.implicit)
+        self.assertFalse(m3.isLeadingAnacrusis)
+        self.assertEqual([float(n.beat) for n in m3.flatten().notes], [1.0])
+
     def testLucaGloriaSpanners(self):
         '''
         lots of lines, including overlapping here; testing that

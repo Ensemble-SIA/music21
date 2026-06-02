@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<!--
+Test fixture for the interior-implicit fill-from-start convention.
+
+Two distinct uses of implicit="yes" measures appear here:
+
+  * Measure 0 (LEADING anacrusis): a 1-quarter pickup in a 3/4 bar, at
+    part offset 0. Ensemble's right-aligned pickup convention anchors it
+    to the right edge of the notional full bar, beat 3.0 (count-back).
+    music21's paddingLeft already produces this, and it is KEPT.
+
+  * Measure 2 plus its implicit continuation (INTERIOR incomplete split):
+    a 3/4 bar encoded as two measure elements at the repeat-boundary
+    pattern, a 2-quarter half (beats 1, 2) and a 1-quarter implicit
+    half. This is mid-piece (part offset above 0), so it is NOT a leading
+    anacrusis. Ensemble's convention numbers each half fill-from-start;
+    the implicit half's note is beat 1.0, not 3.0.
+
+music21 by default applies paddingLeft (right-edge count-back) to EVERY
+implicit incomplete measure, so without the fix the interior implicit
+half reports beat 3.0. The getMeasureOffsetOrMeterModulusOffset gate
+(implicit AND measure.offset != 0) restricts count-back to the leading
+anacrusis; interior implicit measures fill from start.
+
+See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md
+"Right-aligned pickup convention (canonical)".
+-->
+<score-partwise version="4.0">
+  <part-list>
+    <score-part id="P1">
+      <part-name>Piano</part-name>
+    </score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="0" implicit="yes">
+      <attributes>
+        <divisions>4</divisions>
+        <key><fifths>0</fifths></key>
+        <time><beats>3</beats><beat-type>4</beat-type></time>
+        <clef><sign>G</sign><line>2</line></clef>
+      </attributes>
+      <note><pitch><step>C</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+    </measure>
+    <measure number="1">
+      <note><pitch><step>D</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+      <note><pitch><step>E</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+      <note><pitch><step>F</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <note><pitch><step>G</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+      <note><pitch><step>A</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+    </measure>
+    <measure number="2" implicit="yes">
+      <note><pitch><step>B</step><octave>4</octave></pitch>
+        <duration>4</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>

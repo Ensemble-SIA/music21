@@ -1758,20 +1758,10 @@ class TimeSignature(TimeSignatureBase):
         >>> ts2.getMeasureOffsetOrMeterModulusOffset(n4)
         0.0
         '''
-        mOffset = el._getMeasureOffset()  # TODO(msc): expose this method and remove private
-        tsMeasureOffset = self._getMeasureOffset(includeMeasurePadding=False)
-        # Skip the bar-duration modulo for implicit measures whose actual
-        # content quarter-length exceeds the time signature's bar duration
-        # (cadenza bars, second-ending voltas with unusual length, etc.).
-        # Without this branch, dense cadenza tuplet content past barDuration
-        # wraps to small offsets and collapses positions onto the start of
-        # the bar — so multiple distinct notes report the same beat.
-        # The implicit flag is set by xmlToM21.parseMeasureAttributes when
-        # the source MusicXML measure has implicit="yes".
-        # See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md.
-        # Find the enclosing Measure: activeSite when el is directly in one,
-        # otherwise via context (notes inside a Voice container have
-        # activeSite=Voice, not Measure).
+        # Find the enclosing Measure first: activeSite when el is directly in
+        # one, otherwise via context (notes inside a Voice container have
+        # activeSite=Voice, not Measure). Resolved before the offset below
+        # because it decides whether paddingLeft applies.
         activeSite = el.activeSite
         if activeSite is not None and getattr(activeSite, 'isMeasure', False):
             enclosingMeasure = activeSite
