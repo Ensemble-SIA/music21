@@ -1772,6 +1772,32 @@ class TimeSignature(TimeSignatureBase):
             enclosingMeasure is not None
             and getattr(enclosingMeasure, 'implicit', False)
         )
+        # Ensemble convention (docs/UPSTREAM_MODIFICATIONS.md; BEAT_LAYER.md
+        # "Right-aligned pickup convention"): paddingLeft is the right-edge
+        # count-back offset music21 sets on incomplete measures — both the
+        # leading pickup (first-measure branch of adjustTimeAttributesFromMeasure)
+        # AND interior pair-sum / mid-measure-repeat halves (the
+        # lastMeasureWasShort branch). Ensemble keeps count-back ONLY for the
+        # leading anacrusis; every other padded measure is numbered
+        # fill-from-start. Gate on paddingLeft (the actual trigger), not on
+        # `implicit` — the interior halves are often implicit=False in the
+        # source yet still carry paddingLeft. `isLeadingAnacrusis` is set in
+        # xmlToM21 exactly at the leading-pickup padding site.
+        is_interior_padded = (
+            getattr(enclosingMeasure, 'paddingLeft', 0) != 0
+            and not getattr(enclosingMeasure, 'isLeadingAnacrusis', False)
+        )
+        mOffset = el._getMeasureOffset(includeMeasurePadding=not is_interior_padded)
+        tsMeasureOffset = self._getMeasureOffset(includeMeasurePadding=False)
+        # Skip the bar-duration modulo for implicit measures whose actual
+        # content quarter-length exceeds the time signature's bar duration
+        # (cadenza bars, second-ending voltas with unusual length, etc.).
+        # Without this branch, dense cadenza tuplet content past barDuration
+        # wraps to small offsets and collapses positions onto the start of
+        # the bar — so multiple distinct notes report the same beat.
+        # The implicit flag is set by xmlToM21.parseMeasureAttributes when
+        # the source MusicXML measure has implicit="yes".
+        # See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md.
         if is_implicit_measure or opFrac(mOffset + tsMeasureOffset) < self.barDuration.quarterLength:
             return mOffset
         else:

@@ -1,27 +1,28 @@
 <?xml version='1.0' encoding='UTF-8'?>
 <!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 4.0 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
 <!--
-Test fixture for the interior-implicit fill-from-start convention.
+Test fixture for the interior fill-from-start convention.
 
-Two distinct uses of implicit="yes" measures appear here:
+  * Measure 0 (LEADING anacrusis): a 1-quarter pickup in a 3/4 bar at part
+    offset 0. music21 pads it via the first-measure branch of
+    adjustTimeAttributesFromMeasure; Ensemble KEEPS that count-back, so its
+    note is beat 3.0 (right edge of the notional bar). isLeadingAnacrusis
+    is set True there.
 
-  * Measure 0 (LEADING anacrusis): a 1-quarter pickup in a 3/4 bar, at
-    part offset 0. Ensemble's right-aligned pickup convention anchors it
-    to the right edge of the notional full bar, beat 3.0 (count-back).
-    music21's paddingLeft already produces this, and it is KEPT.
+  * Measures 2 + 3 (INTERIOR incomplete split): a 3/4 bar split mid-piece
+    into a 2-quarter half and a 1-quarter half. NEITHER is implicit="yes" —
+    this is the shape the ORIGINAL SCORE uses (the earlier bug came from
+    testing the unrolled variant, where such bars ARE implicit; the parsers
+    parse the score, not the variant). music21 still right-aligns the second
+    half: the first short half sets lastMeasureWasShort, so the second short
+    half is padded via padAsAnacrusis (paddingLeft=2.0) even though it is
+    implicit=False and isLeadingAnacrusis=False.
 
-  * Measure 2 plus its implicit continuation (INTERIOR incomplete split):
-    a 3/4 bar encoded as two measure elements at the repeat-boundary
-    pattern, a 2-quarter half (beats 1, 2) and a 1-quarter implicit
-    half. This is mid-piece (part offset above 0), so it is NOT a leading
-    anacrusis. Ensemble's convention numbers each half fill-from-start;
-    the implicit half's note is beat 1.0, not 3.0.
-
-music21 by default applies paddingLeft (right-edge count-back) to EVERY
-implicit incomplete measure, so without the fix the interior implicit
-half reports beat 3.0. The getMeasureOffsetOrMeterModulusOffset gate
-(implicit AND measure.offset != 0) restricts count-back to the leading
-anacrusis; interior implicit measures fill from start.
+Ensemble numbers interior padded halves fill-from-start. The
+getMeasureOffsetOrMeterModulusOffset gate drops paddingLeft when
+(paddingLeft != 0 AND not isLeadingAnacrusis) — so the interior half's note
+is beat 1.0, not 3.0. Gating on paddingLeft, NOT implicit, is the point:
+the interior half is implicit=False yet still carries paddingLeft.
 
 See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md
 "Right-aligned pickup convention (canonical)".
@@ -57,7 +58,7 @@ See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md
       <note><pitch><step>A</step><octave>4</octave></pitch>
         <duration>4</duration><type>quarter</type></note>
     </measure>
-    <measure number="2" implicit="yes">
+    <measure number="3">
       <note><pitch><step>B</step><octave>4</octave></pitch>
         <duration>4</duration><type>quarter</type></note>
     </measure>
