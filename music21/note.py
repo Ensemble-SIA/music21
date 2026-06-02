@@ -1019,10 +1019,10 @@ class NotRest(GeneralNote):
         'notehead', 'noteheadFill', 'noteheadParenthesis', 'beams'
     )
 
-    # Ensemble fork: class-level defaults for tie-chain EUUID back-pointers.
+    # Ensemble fork: class-level defaults for tie-chain note_id back-pointers.
     # Set during MusicXML import in xmlToM21.py:_update_tie_pointers via a
     # per-PartParser ongoing-tie state machine. Lets downstream consumers
-    # walk tie chains by direct EUUID dereference instead of m21's native
+    # walk tie chains by direct note_id dereference instead of m21's native
     # single-direction Note.tie.type marker (which exposes "this note has
     # a tie continuation" but not "the prior tied note's id"). Importers
     # other than MusicXML leave both at None — non-MusicXML sources don't
@@ -1034,12 +1034,12 @@ class NotRest(GeneralNote):
     tied_from_note_id: 'str|None' = None
     tied_to_note_id: 'str|None' = None
 
-    # Ensemble fork: class-level default for grace-host EUUID. Set during
+    # Ensemble fork: class-level default for grace-host note_id. Set during
     # MusicXML import in xmlToM21.py via a per-PartParser pending-graces
     # queue: when a grace is parsed, queue its id; when a non-grace note
     # arrives, back-fill all queued graces' grace_host_note_id with the
     # non-grace's id. Lets the in-loop voter find a grace's host by
-    # direct EUUID dereference instead of adjacency walking. Importers
+    # direct note_id dereference instead of adjacency walking. Importers
     # other than MusicXML leave it at None.
     grace_host_note_id: 'str|None' = None
 
