@@ -1501,11 +1501,6 @@ class PartParser(XMLParserBase):
         self.lastTimeSignature: meter.TimeSignature|None = None
         self.lastMeasureWasShort = False
         self.lastMeasureOffset = 0.0
-        # Tracks, in document order within this part, whether a non-implicit
-        # measure has been seen yet. Used to mark the leading anacrusis (an
-        # implicit pickup before any non-implicit measure) distinctly from
-        # interior implicit measures. See Measure.isLeadingAnacrusis.
-        self.seenNonImplicitMeasure = False
 
         # a dict of clefs per staff number
         self.lastClefs: dict[int, clef.Clef|None] = {NO_STAFF_ASSIGNED: clef.TrebleClef()}
@@ -2068,15 +2063,6 @@ class PartParser(XMLParserBase):
         self.staffReferenceList.append(measureParser.staffReference)
 
         m = measureParser.stream
-        # Mark the leading anacrusis: an implicit pickup measure with no
-        # non-implicit measure before it in the part. Interior implicit
-        # measures (mid-measure-repeat halves, pair-sum splits) are left
-        # False so meter logic numbers them fill-from-start rather than
-        # count-back. Measures are parsed in document order here, so the
-        # running flag is reliable. See Measure.isLeadingAnacrusis.
-        m.isLeadingAnacrusis = bool(m.implicit) and not self.seenNonImplicitMeasure
-        if not m.implicit:
-            self.seenNonImplicitMeasure = True
         self.setLastMeasureInfo(m)
         # TODO: move this into the measure parsing,
         #     because it should happen on a voice level.
@@ -2331,6 +2317,14 @@ class PartParser(XMLParserBase):
                 # cannot get bar duration proportion if we cannot get a ts
                 if m.barDurationProportion() < 1.0:
                     m.padAsAnacrusis()
+                    # Ensemble fork: this is the leading anacrusis — the first
+                    # measure of the part, incomplete. paddingLeft count-back is
+                    # KEPT for it. Interior padded measures (pair-sum /
+                    # mid-measure-repeat halves padded via the lastMeasureWasShort
+                    # branch below) leave isLeadingAnacrusis False, so meter logic
+                    # (getMeasureOffsetOrMeterModulusOffset) drops their padding
+                    # and numbers them fill-from-start. See UPSTREAM_MODIFICATIONS.md.
+                    m.isLeadingAnacrusis = True
                     # environLocal.printDebug(['incompletely filled Measure found on musicxml
                     #    import; interpreting as an anacrusis:', 'paddingLeft:', m.paddingLeft])
                 mOffsetShift = mHighestTime

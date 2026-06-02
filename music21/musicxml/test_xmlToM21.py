@@ -930,15 +930,19 @@ class Test(unittest.TestCase):
     def testInteriorImplicitFillFromStart(self):
         '''
         The paddingLeft right-edge count-back (Ensemble's right-aligned pickup
-        convention) applies ONLY to the leading anacrusis. Interior implicit
-        incomplete measures — mid-measure-repeat halves, pair-sum splits — are
-        numbered fill-from-start.
+        convention) applies ONLY to the leading anacrusis. Interior incomplete
+        measures — pair-sum / mid-measure-repeat halves — are numbered
+        fill-from-start, EVEN WHEN implicit=False.
 
-        music21 by default applies paddingLeft to every implicit incomplete
-        measure, so without the isLeadingAnacrusis gate the interior implicit
-        half reports beat 3.0 instead of 1.0. See ensemble repo:
-        docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md "Right-aligned
-        pickup convention".
+        music21 sets paddingLeft on interior incomplete measures too — a short
+        half following a short half is padded via the lastMeasureWasShort
+        branch of adjustTimeAttributesFromMeasure, not only implicit ones. So
+        the gate keys on paddingLeft, not implicit: it drops paddingLeft from
+        the beat query when (paddingLeft != 0 AND not isLeadingAnacrusis).
+        The original score encodes these halves implicit=False, so an
+        implicit-keyed gate misses them entirely (the bug that shipped). See
+        ensemble repo: docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md
+        "Right-aligned pickup convention".
         '''
         from music21 import converter
         thisDir = common.getSourceFilePath() / 'musicxml'
@@ -948,22 +952,25 @@ class Test(unittest.TestCase):
         measures = list(c.recurse().getElementsByClass(stream.Measure))
         m0, m1, m2, m3 = measures[0], measures[1], measures[2], measures[3]
 
-        # Leading anacrusis: implicit pickup at the start of the part. The
-        # count-back is KEPT — a 1-quarter pickup in 3/4 reports beat 3.0.
-        self.assertTrue(m0.implicit)
+        # Leading anacrusis: pickup at the start of the part. music21 pads it
+        # (paddingLeft != 0); the count-back is KEPT — a 1-quarter pickup in
+        # 3/4 reports beat 3.0.
         self.assertTrue(m0.isLeadingAnacrusis)
+        self.assertNotEqual(m0.paddingLeft, 0)
         self.assertEqual([float(n.beat) for n in m0.flatten().notes], [3.0])
 
         # Full bar.
         self.assertEqual([float(n.beat) for n in m1.flatten().notes], [1.0, 2.0, 3.0])
 
-        # Interior split, first half (2 quarters): fill-from-start.
-        self.assertFalse(m2.implicit)
+        # Interior split, first half (2 quarters): not padded-left; fills from start.
         self.assertEqual([float(n.beat) for n in m2.flatten().notes], [1.0, 2.0])
 
-        # Interior split, implicit second half (1 quarter): implicit but NOT
-        # the leading anacrusis, so fill-from-start -> beat 1.0, not 3.0.
-        self.assertTrue(m3.implicit)
+        # Interior split, second half (1 quarter): implicit=False, but music21
+        # STILL pads it (paddingLeft != 0) because it follows a short measure.
+        # It is not the leading anacrusis, so the gate drops the padding ->
+        # beat 1.0, not 3.0. This is exactly the case an implicit-keyed gate missed.
+        self.assertFalse(m3.implicit)
+        self.assertNotEqual(m3.paddingLeft, 0)
         self.assertFalse(m3.isLeadingAnacrusis)
         self.assertEqual([float(n.beat) for n in m3.flatten().notes], [1.0])
 
