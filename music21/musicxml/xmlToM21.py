@@ -3619,7 +3619,7 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
             # provide all because of tied
             # TODO: find tied if tie is not found (cue notes)
             # Ensemble fork: tied_from_note_id / tied_to_note_id back-pointer
-            # bookkeeping. Adds EUUID pointers on the resolved Note + the
+            # bookkeeping. Adds note_id pointers on the resolved Note + the
             # prior tied Note. Skip on Unpitched (no .pitch.midi).
             if isinstance(n, note.Note):
                 self._update_tie_pointers(mxNote, n)
@@ -4710,7 +4710,7 @@ class MeasureParser(SoundTagMixin, XMLParserBase):
         # time without depending on call ordering.
         note_id = mxNote.get('id')
         if note_id is None:
-            return  # no EUUID, can't back-point
+            return  # no note_id, can't back-point
         staff = self.getStaffNumber(mxNote)
         voice_el = mxNote.find('voice')
         voice = (
