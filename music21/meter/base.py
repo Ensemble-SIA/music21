@@ -1736,12 +1736,17 @@ class TimeSignature(TimeSignatureBase):
         >>> ts1.getMeasureOffsetOrMeterModulusOffset(n1)
         2.0
 
-        Exceeding the range of the Measure gets a modulus
+        A note inside a Measure whose content overflows the bar extrapolates
+        past barDuration rather than wrapping to a modulus (Ensemble fork:
+        cadenza washes and long bars are numbered continuously, matching the
+        other parsers). The modulus fallback still applies to a note in a
+        meter-bearing Stream with no Measure (below). See ensemble repo:
+        docs/UPSTREAM_MODIFICATIONS.md.
 
         >>> n2 = note.Note()
         >>> m.insert(4.0, n2)
         >>> ts1.getMeasureOffsetOrMeterModulusOffset(n2)
-        1.0
+        4.0
 
         Can be applied to Notes in a Stream with a TimeSignature.
 
@@ -1789,16 +1794,33 @@ class TimeSignature(TimeSignatureBase):
         )
         mOffset = el._getMeasureOffset(includeMeasurePadding=not is_interior_padded)
         tsMeasureOffset = self._getMeasureOffset(includeMeasurePadding=False)
-        # Skip the bar-duration modulo for implicit measures whose actual
+        # Skip the bar-duration modulo when the enclosing measure's actual
         # content quarter-length exceeds the time signature's bar duration
-        # (cadenza bars, second-ending voltas with unusual length, etc.).
-        # Without this branch, dense cadenza tuplet content past barDuration
-        # wraps to small offsets and collapses positions onto the start of
-        # the bar — so multiple distinct notes report the same beat.
-        # The implicit flag is set by xmlToM21.parseMeasureAttributes when
-        # the source MusicXML measure has implicit="yes".
-        # See ensemble repo: docs/UPSTREAM_MODIFICATIONS.md.
-        if is_implicit_measure or opFrac(mOffset + tsMeasureOffset) < self.barDuration.quarterLength:
+        # (cadenza washes, long bars, second-ending voltas of unusual length).
+        # Without this branch, dense content past barDuration wraps to small
+        # offsets and collapses distinct notes onto the start of the bar — so
+        # multiple notes report the same beat (silently: the beats look
+        # plausible, just wrong).
+        #
+        # The trigger is CONTENT overflow (measure_overflows), NOT the
+        # implicit="yes" marker: many overflow bars are non-implicit — e.g.
+        # ravel_pavane bar 71, a plain 4/4 bar holding 5.0q — and the other
+        # parsers (lxml, partitura) extrapolate beat past the bar regardless of
+        # the marker, so music21 must too or it disagrees on every overflow
+        # note. is_implicit_measure is kept for the documented implicit-cadenza
+        # case (fork commit 2c2c8c27b); when enclosingMeasure is None (flat /
+        # meter-modulus streams) both flags are False and control falls through
+        # to the modulo, preserving that use. See ensemble repo:
+        # docs/UPSTREAM_MODIFICATIONS.md.
+        measure_overflows = (
+            enclosingMeasure is not None
+            and enclosingMeasure.highestTime > self.barDuration.quarterLength
+        )
+        if (
+            is_implicit_measure
+            or measure_overflows
+            or opFrac(mOffset + tsMeasureOffset) < self.barDuration.quarterLength
+        ):
             return mOffset
         else:
             # must get offset relative to not just start of Stream, but the last
