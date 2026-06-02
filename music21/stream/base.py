@@ -13026,6 +13026,15 @@ class Measure(Stream):
         # Set by xmlToM21.parseMeasureAttributes; consumed by meter logic
         # to skip bar-duration modulo on cadenza/overflow bars.
         self.implicit: bool = False
+        # True iff this is the leading anacrusis (a pickup measure with no
+        # non-implicit measure before it in the part). Set by xmlToM21's
+        # per-part measure loop. Consumed by meter logic to restrict the
+        # paddingLeft right-edge count-back to the leading pickup only —
+        # interior implicit/incomplete measures (mid-measure-repeat halves,
+        # pair-sum splits) are numbered fill-from-start. See ensemble repo:
+        # docs/UPSTREAM_MODIFICATIONS.md; docs/BEAT_LAYER.md "Right-aligned
+        # pickup convention".
+        self.isLeadingAnacrusis: bool = False
         # we can request layout width, using the same units used
         # in layout.py for systems; most musicxml readers do not support this
         # on input
@@ -13119,7 +13128,7 @@ class Measure(Stream):
 
         for attr in ('timeSignatureIsNew', 'clefIsNew', 'keyIsNew', 'filled',
                      'paddingLeft', 'paddingRight', 'number', 'numberSuffix', 'layoutWidth',
-                     'implicit'):
+                     'implicit', 'isLeadingAnacrusis'):
             if hasattr(other, attr):
                 setattr(self, attr, getattr(other, attr))
 
